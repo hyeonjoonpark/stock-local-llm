@@ -5,6 +5,7 @@ import AnalysisSummaryCard from "@/components/AnalysisSummaryCard";
 import PriceChart from "@/components/PriceChart";
 import StatePanel from "@/components/StatePanel";
 import StockSearchForm from "@/components/StockSearchForm";
+import TradeScenarioCalculator from "@/components/TradeScenarioCalculator";
 import { fetchStockAnalysis } from "@/lib/api";
 import { PricePoint, StockAnalysisResponse } from "@/lib/types";
 
@@ -14,6 +15,38 @@ function buildFallbackSeries(currentPrice: number): PricePoint[] {
     date: `${index + 1}D`,
     close: Number((currentPrice * (1 + ratio)).toFixed(2)),
   }));
+}
+
+function parseQuestionPositionContext(question: string): {
+  quantity?: number;
+  avgPrice?: number;
+} {
+  const normalized = question.trim();
+  if (!normalized) {
+    return {};
+  }
+
+  const quantityMatch = normalized.match(/(\d+(?:\.\d+)?)\s*주/);
+  const avgPricePatterns = [
+    /평단\s*(\d+(?:\.\d+)?)/,
+    /개당\s*(\d+(?:\.\d+)?)/,
+    /(\d+(?:\.\d+)?)\s*(?:달러|원)\s*에\s*샀/,
+    /(\d+(?:\.\d+)?)\s*(?:달러|원)\s*매수/,
+  ];
+
+  let avgPrice: number | undefined;
+  for (const pattern of avgPricePatterns) {
+    const match = normalized.match(pattern);
+    if (match) {
+      avgPrice = Number(match[1]);
+      break;
+    }
+  }
+
+  return {
+    quantity: quantityMatch ? Number(quantityMatch[1]) : undefined,
+    avgPrice,
+  };
 }
 
 export default function StockDashboard() {
@@ -33,6 +66,11 @@ export default function StockDashboard() {
     }
     return buildFallbackSeries(analysis.currentPrice);
   }, [analysis]);
+
+  const parsedPosition = useMemo(
+    () => parseQuestionPositionContext(question),
+    [question],
+  );
 
   const handleSubmit = async () => {
     const normalizedTicker = ticker.trim();
@@ -87,6 +125,13 @@ export default function StockDashboard() {
       {!loading && analysis && (
         <>
           <AnalysisSummaryCard data={analysis} />
+          <TradeScenarioCalculator
+            key={`${analysis.ticker}-${parsedPosition.quantity ?? "na"}-${parsedPosition.avgPrice ?? "na"}`}
+            currentPrice={analysis.currentPrice}
+            currency={analysis.currency}
+            initialQuantity={parsedPosition.quantity}
+            initialAvgPrice={parsedPosition.avgPrice}
+          />
           <PriceChart data={chartData} currency={analysis.currency} />
         </>
       )}
