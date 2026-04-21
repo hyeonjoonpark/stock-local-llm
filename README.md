@@ -47,3 +47,22 @@ stock-ai/
 │   └── src/main/java/...   # Controller, Service, DTO
 └── stock-ai-frontend/      # Next.js Web Dashboard
     └── src/                # App Router & Components
+```
+
+---
+
+```text
+cd ai
+# 라이브러리 설치
+pip install pandas numpy yfinance fastapi uvicorn requests
+# 서버 실행
+python main.py
+```
+
+```text
+cd stock-ai-frontend
+# 패키지 설치
+npm install
+# 개발 서버 실행
+npm run dev
+```
