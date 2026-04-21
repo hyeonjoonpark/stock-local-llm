@@ -76,6 +76,16 @@ export default function AnalysisSummaryCard({ data }: AnalysisSummaryCardProps) 
           ))}
         </ul>
       )}
+      {data.retrievedContext.length > 0 && (
+        <div className="mt-5 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+          <p className="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">RAG 참조 근거</p>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-600 dark:text-zinc-300">
+            {data.retrievedContext.map((context, index) => (
+              <li key={`${index}-${context.slice(0, 20)}`}>{context}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

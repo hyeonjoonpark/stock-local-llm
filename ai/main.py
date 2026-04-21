@@ -4,9 +4,11 @@ import yfinance as yf
 import requests
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from rag_engine import StockRAGEngine
 
 app = FastAPI()
+rag_engine = StockRAGEngine()
 
 # Ollama API 설정 (로컬에 실행 중인 Ollama 주소)
 OLLAMA_API = "http://localhost:11434/api/generate"
@@ -66,7 +68,7 @@ def normalize_ticker_input(raw_ticker: str) -> str:
     return cleaned.upper()
 
 @app.get("/analyze")
-def analyze_stock(ticker: str):
+def analyze_stock(ticker: str, question: str = ""):
     try:
         # --- 1. 한국 주식 처리 로직 (숫자 6자리 입력 시 처리) ---
         original_ticker = ticker
@@ -95,7 +97,7 @@ def analyze_stock(ticker: str):
         change_rate = ((current_price - start_price) / start_price) * 100 if start_price else 0
         volatility = df['Close'].pct_change().dropna().std() * 100 if len(df) > 1 else 0
         currency = stock.info.get('currency', 'Unknown')  # 통화 단위 (KRW, USD 등)
-        analyzed_at = datetime.utcnow().isoformat() + "Z"
+        analyzed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         # 차트 표시용 시계열 (최근 20개)
         price_series = [
@@ -106,12 +108,54 @@ def analyze_stock(ticker: str):
             for index, row in df.tail(20).iterrows()
         ]
 
-        # --- 3. LLM 프롬프트 작성 (Decision 추출 최적화) ---
+        # --- 3. 뉴스 수집 + RAG 인덱싱 ---
+        raw_news = stock.news if hasattr(stock, "news") else []
+        news_items = []
+        for item in raw_news[:8]:
+            news_items.append(
+                {
+                    "title": item.get("title", ""),
+                    "summary": item.get("summary", "") or item.get("link", ""),
+                    "publisher": item.get("publisher", ""),
+                }
+            )
+
+        rag_docs = rag_engine.build_documents(
+            ticker=ticker,
+            currency=currency,
+            current_price=float(current_price),
+            average_price=float(average_price),
+            max_price=float(max_price),
+            change_rate=float(change_rate),
+            volatility=float(volatility),
+            news_items=news_items,
+        )
+        rag_engine.upsert_documents(rag_docs)
+
+        user_question = question.strip() or f"{ticker} 최근 투자 전망 어때?"
+        retrieved_context_list = rag_engine.retrieve_context(
+            ticker=ticker,
+            question=user_question,
+            top_k=5,
+        )
+        retrieved_context = "\n\n".join(retrieved_context_list) if retrieved_context_list else "검색된 참조 데이터 없음"
+
+        # --- 4. LLM 프롬프트 작성 (RAG 컨텍스트 기반) ---
         prompt = f"""
-        당신은 금융 분석 전문가입니다. {ticker} 종목에 대해 분석하세요.
+        당신은 금융 분석 전문가입니다. 아래는 {ticker} 종목의 최신 데이터와 검색된 참조 문서입니다.
+
+        [사용자 질문]
+        {user_question}
+
+        [최신 시장 지표]
         - 현재가: {current_price:.2f} ({currency})
         - 한 달 평균가: {average_price:.2f} ({currency})
         - 최고가: {max_price:.2f} ({currency})
+        - 등락률: {change_rate:.2f}%
+        - 변동성: {volatility:.2f}%
+
+        [RAG 검색 컨텍스트]
+        {retrieved_context}
         
         [지시사항]
         1. 반드시 JSON만 출력하세요. JSON 이외 텍스트는 절대 출력하지 마세요.
@@ -125,7 +169,7 @@ def analyze_stock(ticker: str):
         }}
         """
 
-        # --- 4. Ollama(LLM) 호출 ---
+        # --- 5. Ollama(LLM) 호출 ---
         response = requests.post(OLLAMA_API, json={
             "model": "llama3.1",
             "prompt": prompt,
@@ -137,7 +181,7 @@ def analyze_stock(ticker: str):
 
         full_text = response.json().get("response", "")
 
-        # --- 5. JSON 파싱 및 후처리 ---
+        # --- 6. JSON 파싱 및 후처리 ---
         parsed = {}
         json_match = re.search(r"\{[\s\S]*\}", full_text)
         if json_match:
@@ -206,6 +250,7 @@ def analyze_stock(ticker: str):
             "keyFactors": key_factors,
             "priceSeries": price_series,
             "analyzedAt": analyzed_at,
+            "retrievedContext": retrieved_context_list[:3],
         }
         
     except Exception as e:

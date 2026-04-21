@@ -23,11 +23,12 @@ public class StockService {
         this.webClient = webClientBuilder.baseUrl(AI_BASE_URL).build();
     }
 
-    public Mono<StockAnalysisResponse> getAnalysis(String ticker) {
+    public Mono<StockAnalysisResponse> getAnalysis(String ticker, String question) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/analyze")
                         .queryParam("ticker", ticker)
+                        .queryParam("question", question)
                         .build())
                 .retrieve()
                 .bodyToMono(Map.class)
@@ -48,6 +49,7 @@ public class StockService {
         List<String> keyFactors = toStringList(payload.get("keyFactors"));
         List<StockAnalysisResponse.PricePoint> priceSeries = toPriceSeries(payload.get("priceSeries"));
         String analyzedAt = Objects.toString(payload.get("analyzedAt"), "");
+        List<String> retrievedContext = toStringList(payload.get("retrievedContext"));
 
         return new StockAnalysisResponse(
                 parsedTicker,
@@ -61,7 +63,8 @@ public class StockService {
                 riskLevel,
                 keyFactors,
                 priceSeries,
-                analyzedAt
+                analyzedAt,
+                retrievedContext
         );
     }
 

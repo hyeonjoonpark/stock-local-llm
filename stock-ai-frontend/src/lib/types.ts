@@ -13,6 +13,7 @@ export interface StockAnalysisResponse {
   keyFactors: string[];
   priceSeries: PricePoint[];
   analyzedAt: string;
+  retrievedContext: string[];
 }
 
 export interface PricePoint {

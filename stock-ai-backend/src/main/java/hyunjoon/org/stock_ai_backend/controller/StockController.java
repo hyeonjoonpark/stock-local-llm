@@ -13,7 +13,10 @@ public class StockController {
     private final StockService stockService;
 
     @GetMapping("/analyze/{ticker}")
-    public Mono<StockAnalysisResponse> analyze(@PathVariable String ticker) {
-        return stockService.getAnalysis(ticker);
+    public Mono<StockAnalysisResponse> analyze(
+            @PathVariable String ticker,
+            @RequestParam(required = false, defaultValue = "") String question
+    ) {
+        return stockService.getAnalysis(ticker, question);
     }
 }

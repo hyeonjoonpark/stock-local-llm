@@ -2,15 +2,19 @@
 
 interface StockSearchFormProps {
   ticker: string;
+  question: string;
   loading: boolean;
   onTickerChange: (value: string) => void;
+  onQuestionChange: (value: string) => void;
   onSubmit: () => void;
 }
 
 export default function StockSearchForm({
   ticker,
+  question,
   loading,
   onTickerChange,
+  onQuestionChange,
   onSubmit,
 }: StockSearchFormProps) {
   return (
@@ -40,6 +44,24 @@ export default function StockSearchForm({
         >
           {loading ? "분석 중..." : "분석 시작"}
         </button>
+      </div>
+      <div className="mt-3">
+        <label htmlFor="question" className="mb-2 block text-sm font-medium text-zinc-800 dark:text-zinc-100">
+          분석 질문 (선택)
+        </label>
+        <input
+          id="question"
+          value={question}
+          onChange={(event) => onQuestionChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              onSubmit();
+            }
+          }}
+          placeholder="예: 테슬라 단기 전망과 리스크는?"
+          className="h-11 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none ring-indigo-300 transition placeholder:text-zinc-400 focus:ring-2 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+          disabled={loading}
+        />
       </div>
     </div>
   );

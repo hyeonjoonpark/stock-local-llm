@@ -18,6 +18,7 @@ function buildFallbackSeries(currentPrice: number): PricePoint[] {
 
 export default function StockDashboard() {
   const [ticker, setTicker] = useState("AAPL");
+  const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [analysis, setAnalysis] = useState<StockAnalysisResponse | null>(null);
@@ -33,7 +34,7 @@ export default function StockDashboard() {
   }, [analysis]);
 
   const handleSubmit = async () => {
-    const normalizedTicker = ticker.trim().toUpperCase();
+    const normalizedTicker = ticker.trim();
 
     if (!normalizedTicker) {
       setErrorMessage("티커를 입력해주세요.");
@@ -45,7 +46,7 @@ export default function StockDashboard() {
     setErrorMessage("");
 
     try {
-      const response = await fetchStockAnalysis(normalizedTicker);
+      const response = await fetchStockAnalysis(normalizedTicker, question);
       setAnalysis(response);
       setTicker(normalizedTicker);
     } catch (error) {
@@ -67,8 +68,10 @@ export default function StockDashboard() {
 
       <StockSearchForm
         ticker={ticker}
+        question={question}
         loading={loading}
         onTickerChange={setTicker}
+        onQuestionChange={setQuestion}
         onSubmit={handleSubmit}
       />
 

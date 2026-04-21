@@ -3,18 +3,27 @@ import { StockAnalysisResponse } from "./types";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
-export async function fetchStockAnalysis(ticker: string): Promise<StockAnalysisResponse> {
-  const sanitizedTicker = ticker.trim().toUpperCase();
+export async function fetchStockAnalysis(
+  ticker: string,
+  question: string = "",
+): Promise<StockAnalysisResponse> {
+  const sanitizedTicker = ticker.trim();
+  const sanitizedQuestion = question.trim();
 
   if (!sanitizedTicker) {
     throw new Error("티커를 입력해주세요.");
+  }
+
+  const params = new URLSearchParams();
+  if (sanitizedQuestion) {
+    params.set("question", sanitizedQuestion);
   }
 
   let response: Response;
 
   try {
     response = await fetch(
-      `${API_BASE_URL}/api/stocks/analyze/${encodeURIComponent(sanitizedTicker)}`,
+      `${API_BASE_URL}/api/stocks/analyze/${encodeURIComponent(sanitizedTicker)}${params.toString() ? `?${params.toString()}` : ""}`,
       {
         method: "GET",
         headers: {
@@ -76,7 +85,8 @@ export async function fetchStockAnalysis(ticker: string): Promise<StockAnalysisR
     typeof data?.riskLevel !== "string" ||
     !Array.isArray(data?.keyFactors) ||
     !Array.isArray(data?.priceSeries) ||
-    typeof data?.analyzedAt !== "string"
+    typeof data?.analyzedAt !== "string" ||
+    !Array.isArray(data?.retrievedContext)
   ) {
     throw new Error("서버 응답 형식이 올바르지 않습니다.");
   }

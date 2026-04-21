@@ -22,7 +22,8 @@ public record StockAnalysisResponse(
         String riskLevel,
         java.util.List<String> keyFactors,
         java.util.List<PricePoint> priceSeries,
-        String analyzedAt
+        String analyzedAt,
+        java.util.List<String> retrievedContext
 ) {
     public record PricePoint(
             String date,
