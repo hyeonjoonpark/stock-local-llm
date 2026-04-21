@@ -23,12 +23,13 @@ public class StockService {
         this.webClient = webClientBuilder.baseUrl(AI_BASE_URL).build();
     }
 
-    public Mono<StockAnalysisResponse> getAnalysis(String ticker, String question) {
+    public Mono<StockAnalysisResponse> getAnalysis(String ticker, String question, String period) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/analyze")
                         .queryParam("ticker", ticker)
                         .queryParam("question", question)
+                        .queryParam("period", period)
                         .build())
                 .retrieve()
                 .bodyToMono(Map.class)
@@ -50,6 +51,10 @@ public class StockService {
         List<StockAnalysisResponse.PricePoint> priceSeries = toPriceSeries(payload.get("priceSeries"));
         String analyzedAt = Objects.toString(payload.get("analyzedAt"), "");
         List<String> retrievedContext = toStringList(payload.get("retrievedContext"));
+        String period = Objects.toString(payload.get("period"), "1mo");
+        List<StockAnalysisResponse.EvidenceItem> evidence = toEvidenceItems(payload.get("evidence"));
+        List<StockAnalysisResponse.SourceItem> retrievedSources = toSourceItems(payload.get("retrievedSources"));
+        List<StockAnalysisResponse.NewsItem> recentMonthNews = toNewsItems(payload.get("recentMonthNews"));
 
         return new StockAnalysisResponse(
                 parsedTicker,
@@ -64,7 +69,11 @@ public class StockService {
                 keyFactors,
                 priceSeries,
                 analyzedAt,
-                retrievedContext
+                retrievedContext,
+                period,
+                evidence,
+                retrievedSources,
+                recentMonthNews
         );
     }
 
@@ -136,6 +145,65 @@ public class StockService {
                 double close = toDouble(map.get("close"));
                 if (!date.isBlank()) {
                     result.add(new StockAnalysisResponse.PricePoint(date, close));
+                }
+            }
+        }
+        return result;
+    }
+
+    private List<StockAnalysisResponse.SourceItem> toSourceItems(Object value) {
+        if (!(value instanceof List<?> items)) {
+            return List.of();
+        }
+        List<StockAnalysisResponse.SourceItem> result = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> map) {
+                String title = Objects.toString(map.get("title"), "").trim();
+                String publisher = Objects.toString(map.get("publisher"), "").trim();
+                String url = Objects.toString(map.get("url"), "").trim();
+                String publishedAt = Objects.toString(map.get("publishedAt"), "").trim();
+                if (!title.isEmpty()) {
+                    result.add(new StockAnalysisResponse.SourceItem(title, publisher, url, publishedAt));
+                }
+            }
+        }
+        return result;
+    }
+
+    private List<StockAnalysisResponse.NewsItem> toNewsItems(Object value) {
+        if (!(value instanceof List<?> items)) {
+            return List.of();
+        }
+        List<StockAnalysisResponse.NewsItem> result = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> map) {
+                String title = Objects.toString(map.get("title"), "").trim();
+                String publisher = Objects.toString(map.get("publisher"), "").trim();
+                String url = Objects.toString(map.get("url"), "").trim();
+                String summary = Objects.toString(map.get("summary"), "").trim();
+                String publishedAt = Objects.toString(map.get("publishedAt"), "").trim();
+                if (!title.isEmpty()) {
+                    result.add(new StockAnalysisResponse.NewsItem(title, publisher, url, summary, publishedAt));
+                }
+            }
+        }
+        return result;
+    }
+
+    private List<StockAnalysisResponse.EvidenceItem> toEvidenceItems(Object value) {
+        if (!(value instanceof List<?> items)) {
+            return List.of();
+        }
+        List<StockAnalysisResponse.EvidenceItem> result = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> map) {
+                String type = Objects.toString(map.get("type"), "MARKET").trim();
+                String summary = Objects.toString(map.get("summary"), "").trim();
+                String metric = Objects.toString(map.get("metric"), "").trim();
+                String sourceTitle = Objects.toString(map.get("sourceTitle"), "").trim();
+                String sourceUrl = Objects.toString(map.get("sourceUrl"), "").trim();
+                if (!summary.isEmpty()) {
+                    result.add(new StockAnalysisResponse.EvidenceItem(type, summary, metric, sourceTitle, sourceUrl));
                 }
             }
         }

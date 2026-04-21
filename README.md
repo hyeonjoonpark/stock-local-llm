@@ -51,6 +51,7 @@ API 예시:
 
 ```text
 GET /api/stocks/analyze/TSLA?question=테슬라 최근 전망과 리스크는?
+GET /api/stocks/analyze/TSLA?question=테슬라 단기 전망은?&period=3mo
 ```
 
 ---

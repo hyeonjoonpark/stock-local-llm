@@ -6,6 +6,7 @@ const API_BASE_URL =
 export async function fetchStockAnalysis(
   ticker: string,
   question: string = "",
+  period: "1w" | "1mo" | "3mo" | "1y" = "1mo",
 ): Promise<StockAnalysisResponse> {
   const sanitizedTicker = ticker.trim();
   const sanitizedQuestion = question.trim();
@@ -18,6 +19,7 @@ export async function fetchStockAnalysis(
   if (sanitizedQuestion) {
     params.set("question", sanitizedQuestion);
   }
+  params.set("period", period);
 
   let response: Response;
 
@@ -86,7 +88,11 @@ export async function fetchStockAnalysis(
     !Array.isArray(data?.keyFactors) ||
     !Array.isArray(data?.priceSeries) ||
     typeof data?.analyzedAt !== "string" ||
-    !Array.isArray(data?.retrievedContext)
+    !Array.isArray(data?.retrievedContext) ||
+    typeof data?.period !== "string" ||
+    !Array.isArray(data?.evidence) ||
+    !Array.isArray(data?.retrievedSources) ||
+    !Array.isArray(data?.recentMonthNews)
   ) {
     throw new Error("서버 응답 형식이 올바르지 않습니다.");
   }

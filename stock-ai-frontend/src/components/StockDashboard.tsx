@@ -19,6 +19,7 @@ function buildFallbackSeries(currentPrice: number): PricePoint[] {
 export default function StockDashboard() {
   const [ticker, setTicker] = useState("AAPL");
   const [question, setQuestion] = useState("");
+  const [period, setPeriod] = useState<"1w" | "1mo" | "3mo" | "1y">("1mo");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [analysis, setAnalysis] = useState<StockAnalysisResponse | null>(null);
@@ -46,7 +47,7 @@ export default function StockDashboard() {
     setErrorMessage("");
 
     try {
-      const response = await fetchStockAnalysis(normalizedTicker, question);
+      const response = await fetchStockAnalysis(normalizedTicker, question, period);
       setAnalysis(response);
       setTicker(normalizedTicker);
     } catch (error) {
@@ -69,9 +70,11 @@ export default function StockDashboard() {
       <StockSearchForm
         ticker={ticker}
         question={question}
+        period={period}
         loading={loading}
         onTickerChange={setTicker}
         onQuestionChange={setQuestion}
+        onPeriodChange={setPeriod}
         onSubmit={handleSubmit}
       />
 

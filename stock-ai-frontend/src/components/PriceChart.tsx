@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -28,6 +29,17 @@ function formatPrice(value: number, currency: string): string {
 }
 
 export default function PriceChart({ data, currency }: PriceChartProps) {
+  const [isChartReady, setIsChartReady] = useState(false);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setIsChartReady(true);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
   const isDarkMode =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -68,51 +80,57 @@ export default function PriceChart({ data, currency }: PriceChartProps) {
         <p>최고가: {formatPrice(max, currency)}</p>
       </div>
       <div className="h-60 min-h-60 w-full min-w-0">
-        <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={200}>
-          <LineChart data={data}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke={isDarkMode ? "#374151" : "#e5e7eb"}
-              vertical={false}
-            />
-            <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-            <YAxis
-              tick={{ fontSize: 12 }}
-              domain={["auto", "auto"]}
-              tickFormatter={(value) => (currency === "KRW" ? `${Math.round(value).toLocaleString("ko-KR")}` : `${value.toFixed(0)}`)}
-            />
-            <Tooltip
-              formatter={(value) => {
-                const numericValue = typeof value === "number" ? value : Number(value ?? 0);
-                return [formatPrice(numericValue, currency), "종가"];
-              }}
-              labelFormatter={(label) => `일자: ${label}`}
-              contentStyle={{
-                backgroundColor: isDarkMode ? "#111827" : "#ffffff",
-                border: `1px solid ${isDarkMode ? "#374151" : "#e4e4e7"}`,
-                borderRadius: 8,
-                color: isDarkMode ? "#e5e7eb" : "#111827",
-              }}
-              labelStyle={{ color: isDarkMode ? "#d1d5db" : "#374151" }}
-              itemStyle={{ color: isDarkMode ? "#c7d2fe" : "#4338ca" }}
-            />
-            <ReferenceLine
-              y={average}
-              stroke={isDarkMode ? "#a1a1aa" : "#71717a"}
-              strokeDasharray="4 4"
-              label={{ value: "평균", position: "insideTopRight", fill: isDarkMode ? "#d4d4d8" : "#52525b", fontSize: 11 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="close"
-              stroke={isUpTrend ? "#22c55e" : "#f43f5e"}
-              strokeWidth={2}
-              dot={{ r: 2 }}
-              activeDot={{ r: 5 }}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        {isChartReady ? (
+          <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={200}>
+            <LineChart data={data}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke={isDarkMode ? "#374151" : "#e5e7eb"}
+                vertical={false}
+              />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                domain={["auto", "auto"]}
+                tickFormatter={(value) => (currency === "KRW" ? `${Math.round(value).toLocaleString("ko-KR")}` : `${value.toFixed(0)}`)}
+              />
+              <Tooltip
+                formatter={(value) => {
+                  const numericValue = typeof value === "number" ? value : Number(value ?? 0);
+                  return [formatPrice(numericValue, currency), "종가"];
+                }}
+                labelFormatter={(label) => `일자: ${label}`}
+                contentStyle={{
+                  backgroundColor: isDarkMode ? "#111827" : "#ffffff",
+                  border: `1px solid ${isDarkMode ? "#374151" : "#e4e4e7"}`,
+                  borderRadius: 8,
+                  color: isDarkMode ? "#e5e7eb" : "#111827",
+                }}
+                labelStyle={{ color: isDarkMode ? "#d1d5db" : "#374151" }}
+                itemStyle={{ color: isDarkMode ? "#c7d2fe" : "#4338ca" }}
+              />
+              <ReferenceLine
+                y={average}
+                stroke={isDarkMode ? "#a1a1aa" : "#71717a"}
+                strokeDasharray="4 4"
+                label={{ value: "평균", position: "insideTopRight", fill: isDarkMode ? "#d4d4d8" : "#52525b", fontSize: 11 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="close"
+                stroke={isUpTrend ? "#22c55e" : "#f43f5e"}
+                strokeWidth={2}
+                dot={{ r: 2 }}
+                activeDot={{ r: 5 }}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
+            차트 로딩 중...
+          </div>
+        )}
       </div>
     </section>
   );

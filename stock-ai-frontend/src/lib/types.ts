@@ -14,9 +14,36 @@ export interface StockAnalysisResponse {
   priceSeries: PricePoint[];
   analyzedAt: string;
   retrievedContext: string[];
+  period: "1w" | "1mo" | "3mo" | "1y";
+  evidence: EvidenceItem[];
+  retrievedSources: SourceItem[];
+  recentMonthNews: NewsItem[];
 }
 
 export interface PricePoint {
   date: string;
   close: number;
+}
+
+export interface SourceItem {
+  title: string;
+  publisher: string;
+  url: string;
+  publishedAt: string;
+}
+
+export interface NewsItem {
+  title: string;
+  publisher: string;
+  url: string;
+  summary: string;
+  publishedAt: string;
+}
+
+export interface EvidenceItem {
+  type: "MARKET" | "NEWS";
+  summary: string;
+  metric: string;
+  sourceTitle: string;
+  sourceUrl: string;
 }

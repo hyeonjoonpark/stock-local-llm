@@ -38,6 +38,8 @@ function formatPrice(price: number, currency: string): string {
 
 export default function AnalysisSummaryCard({ data }: AnalysisSummaryCardProps) {
   const confidencePercent = Math.round(data.confidence * 100);
+  const marketEvidence = data.evidence.filter((item) => item.type === "MARKET");
+  const newsEvidence = data.evidence.filter((item) => item.type === "NEWS");
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -76,12 +78,96 @@ export default function AnalysisSummaryCard({ data }: AnalysisSummaryCardProps) 
           ))}
         </ul>
       )}
-      {data.retrievedContext.length > 0 && (
+      {(marketEvidence.length > 0 || newsEvidence.length > 0) && (
         <div className="mt-5 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
-          <p className="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">RAG 참조 근거</p>
-          <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-600 dark:text-zinc-300">
-            {data.retrievedContext.map((context, index) => (
-              <li key={`${index}-${context.slice(0, 20)}`}>{context}</li>
+          <p className="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">RAG 상세 근거</p>
+          {marketEvidence.length > 0 && (
+            <div className="mb-3">
+              <p className="mb-1 text-xs font-semibold text-zinc-700 dark:text-zinc-200">수치 근거</p>
+              <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-600 dark:text-zinc-300">
+                {marketEvidence.map((item, index) => (
+                  <li key={`market-${index}`}>
+                    {item.summary}
+                    {item.metric ? ` (${item.metric})` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {newsEvidence.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-zinc-700 dark:text-zinc-200">뉴스 근거</p>
+              <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-600 dark:text-zinc-300">
+                {newsEvidence.map((item, index) => (
+                  <li key={`news-${index}`}>
+                    <span className="font-semibold">{item.sourceTitle || "뉴스 근거"}</span>
+                    : {item.summary}
+                    {item.sourceUrl && (
+                      <>
+                        {" "}
+                        <a
+                          href={item.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-600 hover:underline dark:text-indigo-300"
+                        >
+                          링크
+                        </a>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+      {data.retrievedSources.length > 0 && (
+        <div className="mt-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+          <p className="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">참조 뉴스 출처</p>
+          <ul className="space-y-2 text-xs text-zinc-700 dark:text-zinc-200">
+            {data.retrievedSources.map((source, index) => (
+              <li key={`${source.title}-${index}`} className="rounded bg-zinc-50 p-2 dark:bg-zinc-800">
+                <p className="font-semibold">{source.title}</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{source.publisher}</p>
+                {source.url && (
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-600 hover:underline dark:text-indigo-300"
+                  >
+                    원문 보기
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.recentMonthNews.length > 0 && (
+        <div className="mt-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+          <p className="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">최근 1개월 관련 뉴스</p>
+          <ul className="space-y-2 text-xs text-zinc-700 dark:text-zinc-200">
+            {data.recentMonthNews.map((news, index) => (
+              <li key={`${news.title}-${index}`} className="rounded bg-zinc-50 p-2 dark:bg-zinc-800">
+                <p className="font-semibold">{news.title}</p>
+                <p className="text-zinc-500 dark:text-zinc-400">
+                  {news.publisher}
+                  {news.publishedAt ? ` · ${news.publishedAt.slice(0, 10)}` : ""}
+                </p>
+                {news.summary && <p className="mt-1 line-clamp-2">{news.summary}</p>}
+                {news.url && (
+                  <a
+                    href={news.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-indigo-600 hover:underline dark:text-indigo-300"
+                  >
+                    원문 보기
+                  </a>
+                )}
+              </li>
             ))}
           </ul>
         </div>

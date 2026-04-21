@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 import hashlib
 
@@ -39,15 +39,18 @@ class StockRAGEngine:
         documents: list[tuple[str, dict[str, Any], str]] = []
 
         market_snapshot = (
-            f"{ticker} 현재가 {current_price:.2f}{currency}, "
-            f"1개월 평균가 {average_price:.2f}{currency}, "
-            f"1개월 최고가 {max_price:.2f}{currency}, "
-            f"1개월 등락률 {change_rate:.2f}%, 변동성 {volatility:.2f}%."
+            f"[MARKET] ticker={ticker}\n"
+            f"현재가={current_price:.2f}{currency}\n"
+            f"평균가={average_price:.2f}{currency}\n"
+            f"최고가={max_price:.2f}{currency}\n"
+            f"등락률={change_rate:.2f}%\n"
+            f"변동성={volatility:.2f}%\n"
+            f"해석={ticker}는 평균가 대비 {'상회' if current_price >= average_price else '하회'} 구간입니다."
         )
         documents.append(
             (
                 self._doc_id(ticker, market_snapshot),
-                {"ticker": ticker, "type": "market", "createdAt": datetime.utcnow().isoformat()},
+                {"ticker": ticker, "type": "market", "createdAt": datetime.now(timezone.utc).isoformat()},
                 market_snapshot,
             )
         )
@@ -59,11 +62,15 @@ class StockRAGEngine:
             if not title:
                 continue
 
-            news_doc = f"[뉴스] {title}\n요약: {summary}\n출처: {publisher}"
+            news_doc = (
+                f"[NEWS] 제목={title}\n"
+                f"요약={summary}\n"
+                f"출처={publisher}"
+            )
             documents.append(
                 (
                     self._doc_id(ticker, news_doc),
-                    {"ticker": ticker, "type": "news", "createdAt": datetime.utcnow().isoformat()},
+                    {"ticker": ticker, "type": "news", "createdAt": datetime.now(timezone.utc).isoformat()},
                     news_doc,
                 )
             )
@@ -84,14 +91,34 @@ class StockRAGEngine:
 
     def retrieve_context(self, ticker: str, question: str, top_k: int = 5) -> list[str]:
         if self.collection is None:
-            filtered = [text for _, meta, text in self._memory_store if meta.get("ticker") == ticker]
-            return filtered[-top_k:] if filtered else []
+            filtered = [(meta, text) for _, meta, text in self._memory_store if meta.get("ticker") == ticker]
+            if not filtered:
+                return []
+            market_docs = [text for meta, text in filtered if meta.get("type") == "market"][-1:]
+            news_docs = [text for meta, text in filtered if meta.get("type") == "news"][-max(top_k - 1, 1):]
+            return market_docs + news_docs
         result = self.collection.query(
             query_texts=[question],
-            n_results=top_k,
+            n_results=max(top_k * 2, 6),
             where={"ticker": ticker},
         )
         docs = result.get("documents", [])
+        metadatas = result.get("metadatas", [])
         if not docs or not docs[0]:
             return []
-        return [str(item) for item in docs[0]]
+        doc_list = [str(item) for item in docs[0]]
+        metadata_list = metadatas[0] if metadatas and metadatas[0] else []
+
+        market_docs: list[str] = []
+        news_docs: list[str] = []
+        for idx, doc in enumerate(doc_list):
+            meta = metadata_list[idx] if idx < len(metadata_list) else {}
+            if isinstance(meta, dict) and meta.get("type") == "market":
+                market_docs.append(doc)
+            elif isinstance(meta, dict) and meta.get("type") == "news":
+                news_docs.append(doc)
+
+        selected = market_docs[:1] + news_docs[: max(top_k - 1, 1)]
+        if not selected:
+            selected = doc_list[:top_k]
+        return selected[:top_k]

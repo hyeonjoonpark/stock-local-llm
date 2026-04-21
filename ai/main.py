@@ -31,6 +31,37 @@ KOREAN_TICKER_MAP = {
 }
 
 
+def parse_investor_context(question: str) -> dict:
+    parsed = {
+        "quantity": None,
+        "avg_price": None,
+    }
+
+    quantity_match = re.search(r"(\d+(?:\.\d+)?)\s*주", question)
+    if quantity_match:
+        try:
+            parsed["quantity"] = float(quantity_match.group(1))
+        except ValueError:
+            parsed["quantity"] = None
+
+    avg_price_patterns = [
+        r"평단\s*(\d+(?:\.\d+)?)",
+        r"개당\s*(\d+(?:\.\d+)?)",
+        r"(\d+(?:\.\d+)?)\s*(?:달러|원)\s*에\s*샀",
+        r"(\d+(?:\.\d+)?)\s*(?:달러|원)\s*매수",
+    ]
+    for pattern in avg_price_patterns:
+        match = re.search(pattern, question)
+        if match:
+            try:
+                parsed["avg_price"] = float(match.group(1))
+                break
+            except ValueError:
+                continue
+
+    return parsed
+
+
 def heuristic_decision(change_rate: float, volatility: float) -> str:
     if change_rate >= 3:
         return "STRONG_BUY"
@@ -68,7 +99,7 @@ def normalize_ticker_input(raw_ticker: str) -> str:
     return cleaned.upper()
 
 @app.get("/analyze")
-def analyze_stock(ticker: str, question: str = ""):
+def analyze_stock(ticker: str, question: str = "", period: str = "1mo"):
     try:
         # --- 1. 한국 주식 처리 로직 (숫자 6자리 입력 시 처리) ---
         original_ticker = ticker
@@ -77,14 +108,24 @@ def analyze_stock(ticker: str, question: str = ""):
             ticker = f"{ticker}.KS"  # 기본적으로 코스피(.KS)로 설정
 
         # --- 2. 주가 데이터 수집 ---
+        period_map = {
+            "1w": "5d",
+            "1mo": "1mo",
+            "3mo": "3mo",
+            "1y": "1y",
+        }
+        normalized_period = period.lower()
+        if normalized_period not in period_map:
+            normalized_period = "1mo"
+
         stock = yf.Ticker(ticker)
-        df = stock.history(period="1mo")
+        df = stock.history(period=period_map[normalized_period])
 
         # 데이터가 비어있다면 코스닥(.KQ)으로 다시 시도
         if df.empty and ".KS" in ticker:
             ticker = ticker.replace(".KS", ".KQ")
             stock = yf.Ticker(ticker)
-            df = stock.history(period="1mo")
+            df = stock.history(period=period_map[normalized_period])
 
         if df.empty:
             raise HTTPException(status_code=404, detail=f"'{original_ticker}'에 해당하는 주식 데이터를 찾을 수 없습니다.")
@@ -110,15 +151,38 @@ def analyze_stock(ticker: str, question: str = ""):
 
         # --- 3. 뉴스 수집 + RAG 인덱싱 ---
         raw_news = stock.news if hasattr(stock, "news") else []
+        now_utc = datetime.now(timezone.utc)
+        one_month_seconds = 30 * 24 * 60 * 60
         news_items = []
+        recent_month_news = []
         for item in raw_news[:8]:
+            publish_ts = item.get("providerPublishTime")
+            published_at = ""
+            is_recent_month = False
+            if isinstance(publish_ts, (int, float)):
+                published_dt = datetime.fromtimestamp(publish_ts, tz=timezone.utc)
+                published_at = published_dt.isoformat().replace("+00:00", "Z")
+                is_recent_month = (now_utc - published_dt).total_seconds() <= one_month_seconds
+
             news_items.append(
                 {
                     "title": item.get("title", ""),
                     "summary": item.get("summary", "") or item.get("link", ""),
                     "publisher": item.get("publisher", ""),
+                    "link": item.get("link", ""),
+                    "publishedAt": published_at,
                 }
             )
+            if is_recent_month:
+                recent_month_news.append(
+                    {
+                        "title": str(item.get("title", "")).strip(),
+                        "publisher": str(item.get("publisher", "")).strip(),
+                        "url": str(item.get("link", "")).strip(),
+                        "summary": str(item.get("summary", "")).strip(),
+                        "publishedAt": published_at,
+                    }
+                )
 
         rag_docs = rag_engine.build_documents(
             ticker=ticker,
@@ -133,6 +197,27 @@ def analyze_stock(ticker: str, question: str = ""):
         rag_engine.upsert_documents(rag_docs)
 
         user_question = question.strip() or f"{ticker} 최근 투자 전망 어때?"
+        investor_context = parse_investor_context(user_question)
+        quantity = investor_context["quantity"]
+        avg_price_input = investor_context["avg_price"]
+
+        personal_context_text = "질문에서 보유 수량/평단 정보가 명시되지 않았습니다."
+        personal_metrics = []
+        if quantity and avg_price_input:
+            unrealized_pnl = (float(current_price) - float(avg_price_input)) * float(quantity)
+            pnl_rate = ((float(current_price) - float(avg_price_input)) / float(avg_price_input) * 100) if avg_price_input else 0
+            position_value = float(current_price) * float(quantity)
+            personal_context_text = (
+                f"보유수량 {quantity:.0f}주, 평단 {avg_price_input:.2f}{currency}, "
+                f"현재가 기준 평가금액 {position_value:.2f}{currency}, "
+                f"미실현손익 {unrealized_pnl:.2f}{currency} ({pnl_rate:.2f}%)."
+            )
+            personal_metrics = [
+                f"보유수량 {quantity:.0f}주",
+                f"평단 {avg_price_input:.2f}{currency}",
+                f"미실현손익 {unrealized_pnl:.2f}{currency} ({pnl_rate:.2f}%)",
+            ]
+
         retrieved_context_list = rag_engine.retrieve_context(
             ticker=ticker,
             question=user_question,
@@ -146,6 +231,9 @@ def analyze_stock(ticker: str, question: str = ""):
 
         [사용자 질문]
         {user_question}
+
+        [개인 보유 포지션 정보]
+        {personal_context_text}
 
         [최신 시장 지표]
         - 현재가: {current_price:.2f} ({currency})
@@ -165,7 +253,16 @@ def analyze_stock(ticker: str, question: str = ""):
           "decision": "STRONG_BUY|BUY|HOLD|SELL|STRONG_SELL 중 하나",
           "confidence": 0.0~1.0 사이 숫자,
           "riskLevel": "LOW|MID|HIGH 중 하나",
-          "keyFactors": ["핵심 근거 1", "핵심 근거 2", "핵심 근거 3"]
+          "keyFactors": ["핵심 근거 1", "핵심 근거 2", "핵심 근거 3"],
+          "evidence": [
+            {{
+              "type": "MARKET|NEWS",
+              "summary": "근거 설명",
+              "metric": "수치 근거",
+              "sourceTitle": "근거 제목",
+              "sourceUrl": "https://..."
+            }}
+          ]
         }}
         """
 
@@ -195,6 +292,7 @@ def analyze_stock(ticker: str, question: str = ""):
         confidence = float(parsed.get("confidence", 0.0)) if str(parsed.get("confidence", "")).strip() else 0.0
         risk_level = str(parsed.get("riskLevel", "")).upper()
         key_factors = parsed.get("keyFactors", [])
+        evidence_items = parsed.get("evidence", [])
 
         # JSON 파싱 실패 시 텍스트 기반 fallback
         if not summary:
@@ -211,6 +309,8 @@ def analyze_stock(ticker: str, question: str = ""):
         if not isinstance(key_factors, list):
             key_factors = []
         key_factors = [str(item).strip() for item in key_factors if str(item).strip()][:3]
+        if not isinstance(evidence_items, list):
+            evidence_items = []
 
         # 잔여 결정 라인/고아 번호 정리
         summary = re.sub(r"(?im)^\s*결정\s*:\s*(STRONG_BUY|BUY|HOLD|SELL|STRONG_SELL)\s*$", "", summary).strip()
@@ -237,6 +337,71 @@ def analyze_stock(ticker: str, question: str = ""):
                 f"현재가 {current_price:.2f}{currency}, 평균가 {average_price:.2f}{currency}",
             ]
 
+        normalized_evidence = []
+        for item in evidence_items:
+            if not isinstance(item, dict):
+                continue
+            ev_type = str(item.get("type", "MARKET")).upper()
+            if ev_type not in ["MARKET", "NEWS"]:
+                ev_type = "MARKET"
+            ev_summary = str(item.get("summary", "")).strip()
+            ev_metric = str(item.get("metric", "")).strip()
+            if ev_metric.upper() == "NONE":
+                ev_metric = ""
+            ev_source_title = str(item.get("sourceTitle", "")).strip()
+            ev_source_url = str(item.get("sourceUrl", "")).strip()
+            if ev_summary:
+                normalized_evidence.append(
+                    {
+                        "type": ev_type,
+                        "summary": ev_summary,
+                        "metric": ev_metric,
+                        "sourceTitle": ev_source_title,
+                        "sourceUrl": ev_source_url,
+                    }
+                )
+
+        if not normalized_evidence:
+            normalized_evidence = [
+                {
+                    "type": "MARKET",
+                    "summary": f"{ticker}의 현재가는 평균가 대비 {'상회' if current_price >= average_price else '하회'} 상태입니다.",
+                    "metric": f"현재가 {current_price:.2f}{currency} / 평균가 {average_price:.2f}{currency}",
+                    "sourceTitle": "시장 스냅샷",
+                    "sourceUrl": "",
+                },
+                {
+                    "type": "MARKET",
+                    "summary": "단기 변동성과 추세 지표를 기반으로 리스크를 산정했습니다.",
+                    "metric": f"등락률 {change_rate:.2f}% / 변동성 {volatility:.2f}%",
+                    "sourceTitle": "시장 스냅샷",
+                    "sourceUrl": "",
+                },
+            ]
+
+            if news_items:
+                normalized_evidence.append(
+                    {
+                        "type": "NEWS",
+                        "summary": str(news_items[0].get("summary", "")).strip() or "최근 뉴스 헤드라인을 참조했습니다.",
+                        "metric": "",
+                        "sourceTitle": str(news_items[0].get("title", "")).strip(),
+                        "sourceUrl": str(news_items[0].get("link", "")).strip(),
+                    }
+                )
+
+        if personal_metrics:
+            normalized_evidence.insert(
+                0,
+                {
+                    "type": "MARKET",
+                    "summary": "질문에 포함된 보유 포지션(수량/평단)을 현재가 기준으로 계산해 반영했습니다.",
+                    "metric": " | ".join(personal_metrics),
+                    "sourceTitle": "질문 기반 포지션 계산",
+                    "sourceUrl": "",
+                },
+            )
+
         return {
             "ticker": ticker,
             "currentPrice": round(float(current_price), 2),
@@ -251,6 +416,19 @@ def analyze_stock(ticker: str, question: str = ""):
             "priceSeries": price_series,
             "analyzedAt": analyzed_at,
             "retrievedContext": retrieved_context_list[:3],
+            "period": normalized_period,
+            "evidence": normalized_evidence[:4],
+            "retrievedSources": [
+                {
+                    "title": str(item.get("title", "")).strip(),
+                    "publisher": str(item.get("publisher", "")).strip(),
+                    "url": str(item.get("link", "")).strip(),
+                    "publishedAt": str(item.get("publishedAt", "")).strip(),
+                }
+                for item in news_items[:3]
+                if str(item.get("title", "")).strip()
+            ],
+            "recentMonthNews": recent_month_news[:6],
         }
         
     except Exception as e:

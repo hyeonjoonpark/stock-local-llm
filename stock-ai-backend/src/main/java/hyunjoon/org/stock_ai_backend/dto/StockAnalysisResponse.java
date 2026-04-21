@@ -23,11 +23,41 @@ public record StockAnalysisResponse(
         java.util.List<String> keyFactors,
         java.util.List<PricePoint> priceSeries,
         String analyzedAt,
-        java.util.List<String> retrievedContext
+        java.util.List<String> retrievedContext,
+        String period,
+        java.util.List<EvidenceItem> evidence,
+        java.util.List<SourceItem> retrievedSources,
+        java.util.List<NewsItem> recentMonthNews
 ) {
     public record PricePoint(
             String date,
             double close
+    ) {
+    }
+
+    public record SourceItem(
+            String title,
+            String publisher,
+            String url,
+            String publishedAt
+    ) {
+    }
+
+    public record NewsItem(
+            String title,
+            String publisher,
+            String url,
+            String summary,
+            String publishedAt
+    ) {
+    }
+
+    public record EvidenceItem(
+            String type,
+            String summary,
+            String metric,
+            String sourceTitle,
+            String sourceUrl
     ) {
     }
 }

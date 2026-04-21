@@ -15,8 +15,9 @@ public class StockController {
     @GetMapping("/analyze/{ticker}")
     public Mono<StockAnalysisResponse> analyze(
             @PathVariable String ticker,
-            @RequestParam(required = false, defaultValue = "") String question
+            @RequestParam(required = false, defaultValue = "") String question,
+            @RequestParam(required = false, defaultValue = "1mo") String period
     ) {
-        return stockService.getAnalysis(ticker, question);
+        return stockService.getAnalysis(ticker, question, period);
     }
 }
