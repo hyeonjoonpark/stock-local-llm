@@ -1,1 +1,7 @@
-spring.application.name=stock-ai-backend
+spring:
+  application:
+    name: stock-ai-backend
+
+ai:
+  server:
+    url: http://localhost:8000
