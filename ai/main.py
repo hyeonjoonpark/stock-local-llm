@@ -11,6 +11,23 @@ app = FastAPI()
 # Ollama API 설정 (로컬에 실행 중인 Ollama 주소)
 OLLAMA_API = "http://localhost:11434/api/generate"
 
+KOREAN_TICKER_MAP = {
+    "테슬라": "TSLA",
+    "애플": "AAPL",
+    "엔비디아": "NVDA",
+    "마이크로소프트": "MSFT",
+    "구글": "GOOGL",
+    "알파벳": "GOOGL",
+    "아마존": "AMZN",
+    "메타": "META",
+    "삼성전자": "005930",
+    "sk하이닉스": "000660",
+    "하이닉스": "000660",
+    "현대차": "005380",
+    "네이버": "035420",
+    "카카오": "035720",
+}
+
 
 def heuristic_decision(change_rate: float, volatility: float) -> str:
     if change_rate >= 3:
@@ -33,11 +50,27 @@ def heuristic_risk(volatility: float) -> str:
         return "MID"
     return "LOW"
 
+
+def normalize_ticker_input(raw_ticker: str) -> str:
+    cleaned = raw_ticker.strip()
+    if not cleaned:
+        return cleaned
+
+    lower_cleaned = cleaned.lower()
+    if lower_cleaned in KOREAN_TICKER_MAP:
+        return KOREAN_TICKER_MAP[lower_cleaned]
+
+    if cleaned in KOREAN_TICKER_MAP:
+        return KOREAN_TICKER_MAP[cleaned]
+
+    return cleaned.upper()
+
 @app.get("/analyze")
 def analyze_stock(ticker: str):
     try:
         # --- 1. 한국 주식 처리 로직 (숫자 6자리 입력 시 처리) ---
         original_ticker = ticker
+        ticker = normalize_ticker_input(ticker)
         if ticker.isdigit() and len(ticker) == 6:
             ticker = f"{ticker}.KS"  # 기본적으로 코스피(.KS)로 설정
 

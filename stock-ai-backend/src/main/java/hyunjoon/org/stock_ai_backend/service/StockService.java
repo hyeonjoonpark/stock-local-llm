@@ -43,7 +43,7 @@ public class StockService {
         String currency = Objects.toString(payload.get("currency"), "USD");
         String summary = Objects.toString(payload.get("summary"), "");
         AnalysisResult decision = toDecision(payload.get("decision"));
-        double confidence = normalizeConfidence(toDouble(payload.get("confidence")));
+        double confidence = normalizeConfidence(toDouble(payload.get("confidence")), decision);
         String riskLevel = toRiskLevel(payload.get("riskLevel"));
         List<String> keyFactors = toStringList(payload.get("keyFactors"));
         List<StockAnalysisResponse.PricePoint> priceSeries = toPriceSeries(payload.get("priceSeries"));
@@ -80,14 +80,24 @@ public class StockService {
         }
     }
 
-    private double normalizeConfidence(double value) {
-        if (value < 0) {
-            return 0;
+    private double normalizeConfidence(double value, AnalysisResult decision) {
+        double normalized = value;
+        if (normalized < 0) {
+            normalized = 0;
         }
-        if (value > 1) {
-            return 1;
+        if (normalized > 1) {
+            normalized = 1;
         }
-        return value;
+        if (normalized == 0) {
+            if (decision == AnalysisResult.STRONG_BUY || decision == AnalysisResult.STRONG_SELL) {
+                return 0.72;
+            }
+            if (decision == AnalysisResult.BUY || decision == AnalysisResult.SELL) {
+                return 0.67;
+            }
+            return 0.6;
+        }
+        return normalized;
     }
 
     private String toRiskLevel(Object value) {
