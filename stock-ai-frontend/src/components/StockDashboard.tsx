@@ -1,0 +1,73 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import AnalysisSummaryCard from "@/components/AnalysisSummaryCard";
+import PriceChart from "@/components/PriceChart";
+import StatePanel from "@/components/StatePanel";
+import StockSearchForm from "@/components/StockSearchForm";
+import { fetchStockAnalysis } from "@/lib/api";
+import { StockAnalysisResponse } from "@/lib/types";
+
+export default function StockDashboard() {
+  const [ticker, setTicker] = useState("AAPL");
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [analysis, setAnalysis] = useState<StockAnalysisResponse | null>(null);
+
+  const chartData = useMemo(() => analysis?.priceSeries ?? [], [analysis]);
+
+  const handleSubmit = async () => {
+    const normalizedTicker = ticker.trim().toUpperCase();
+
+    if (!normalizedTicker) {
+      setErrorMessage("티커를 입력해주세요.");
+      setAnalysis(null);
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage("");
+
+    try {
+      const response = await fetchStockAnalysis(normalizedTicker);
+      setAnalysis(response);
+      setTicker(normalizedTicker);
+    } catch (error) {
+      setAnalysis(null);
+      setErrorMessage(error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-4 px-4 py-8">
+      <header className="mb-2">
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Stock AI Dashboard</h1>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+          백엔드 AI 분석 결과를 조회하고 투자 판단을 빠르게 확인합니다.
+        </p>
+      </header>
+
+      <StockSearchForm
+        ticker={ticker}
+        loading={loading}
+        onTickerChange={setTicker}
+        onSubmit={handleSubmit}
+      />
+
+      {loading && <StatePanel type="loading" message="주가와 AI 요약을 분석 중입니다." />}
+      {!loading && errorMessage && <StatePanel type="error" message={errorMessage} />}
+      {!loading && !errorMessage && !analysis && (
+        <StatePanel type="empty" message="티커를 입력하고 분석을 시작하세요." />
+      )}
+
+      {!loading && analysis && (
+        <>
+          <AnalysisSummaryCard data={analysis} />
+          <PriceChart data={chartData} />
+        </>
+      )}
+    </main>
+  );
+}

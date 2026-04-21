@@ -1,26 +1,149 @@
 package hyunjoon.org.stock_ai_backend.service;
 
-
 import hyunjoon.org.stock_ai_backend.dto.StockAnalysisResponse;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import hyunjoon.org.stock_ai_backend.enums.AnalysisResult;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-@Service
-@RequiredArgsConstructor
-public class StockService {
-    private final WebClient.Builder webClientBuilder;
+import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Objects;
+import java.util.concurrent.TimeoutException;
 
-    @Value("${ai.server.url}")
-    private String aiServerUrl;
+@Service
+public class StockService {
+    private static final String AI_BASE_URL = "http://localhost:8000";
+    private final WebClient webClient;
+
+    public StockService(WebClient.Builder webClientBuilder) {
+        this.webClient = webClientBuilder.baseUrl(AI_BASE_URL).build();
+    }
 
     public Mono<StockAnalysisResponse> getAnalysis(String ticker) {
-        return webClientBuilder.build()
-                .get()
-                .uri(aiServerUrl + "/analyze?ticker=" + ticker)
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/analyze")
+                        .queryParam("ticker", ticker)
+                        .build())
                 .retrieve()
-                .bodyToMono(StockAnalysisResponse.class);
+                .bodyToMono(Map.class)
+                .map(this::toResponse)
+                .onErrorMap(this::mapToStatusException);
+    }
+
+    private StockAnalysisResponse toResponse(Map<?, ?> payload) {
+        String parsedTicker = Objects.toString(payload.get("ticker"), "");
+        double currentPrice = toDouble(payload.get("currentPrice"));
+        double changeRate = toDouble(payload.get("changeRate"));
+        double volatility = toDouble(payload.get("volatility"));
+        String currency = Objects.toString(payload.get("currency"), "USD");
+        String summary = Objects.toString(payload.get("summary"), "");
+        AnalysisResult decision = toDecision(payload.get("decision"));
+        double confidence = normalizeConfidence(toDouble(payload.get("confidence")));
+        String riskLevel = toRiskLevel(payload.get("riskLevel"));
+        List<String> keyFactors = toStringList(payload.get("keyFactors"));
+        List<StockAnalysisResponse.PricePoint> priceSeries = toPriceSeries(payload.get("priceSeries"));
+        String analyzedAt = Objects.toString(payload.get("analyzedAt"), "");
+
+        return new StockAnalysisResponse(
+                parsedTicker,
+                currentPrice,
+                changeRate,
+                volatility,
+                currency,
+                summary,
+                decision,
+                confidence,
+                riskLevel,
+                keyFactors,
+                priceSeries,
+                analyzedAt
+        );
+    }
+
+    private double toDouble(Object value) {
+        if (value instanceof Number numberValue) {
+            return numberValue.doubleValue();
+        }
+        return 0.0;
+    }
+
+    private AnalysisResult toDecision(Object value) {
+        try {
+            return AnalysisResult.valueOf(Objects.toString(value, "HOLD"));
+        } catch (IllegalArgumentException ignored) {
+            return AnalysisResult.HOLD;
+        }
+    }
+
+    private double normalizeConfidence(double value) {
+        if (value < 0) {
+            return 0;
+        }
+        if (value > 1) {
+            return 1;
+        }
+        return value;
+    }
+
+    private String toRiskLevel(Object value) {
+        String risk = Objects.toString(value, "MID").toUpperCase();
+        if (!risk.equals("LOW") && !risk.equals("MID") && !risk.equals("HIGH")) {
+            return "MID";
+        }
+        return risk;
+    }
+
+    private List<String> toStringList(Object value) {
+        if (!(value instanceof List<?> items)) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : items) {
+            String text = Objects.toString(item, "").trim();
+            if (!text.isEmpty()) {
+                result.add(text);
+            }
+        }
+        return result;
+    }
+
+    private List<StockAnalysisResponse.PricePoint> toPriceSeries(Object value) {
+        if (!(value instanceof List<?> items)) {
+            return List.of();
+        }
+        List<StockAnalysisResponse.PricePoint> result = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> map) {
+                String date = Objects.toString(map.get("date"), "");
+                double close = toDouble(map.get("close"));
+                if (!date.isBlank()) {
+                    result.add(new StockAnalysisResponse.PricePoint(date, close));
+                }
+            }
+        }
+        return result;
+    }
+
+    private Throwable mapToStatusException(Throwable throwable) {
+        if (throwable instanceof ResponseStatusException) {
+            return throwable;
+        }
+        if (throwable instanceof TimeoutException) {
+            return new ResponseStatusException(
+                    HttpStatus.GATEWAY_TIMEOUT,
+                    "AI 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.",
+                    throwable
+            );
+        }
+        return new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "AI 분석 서버에 연결할 수 없습니다. AI 서버 실행 상태를 확인해주세요.",
+                throwable
+        );
     }
 }
